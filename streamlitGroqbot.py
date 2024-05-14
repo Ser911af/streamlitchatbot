@@ -5,9 +5,6 @@ from typing import Generator
 
 st.title("Groq Sergio Bot")
 
-# Imprimir todas las claves en st.secrets para diagnóstico
-st.write("Available secrets:", list(st.secrets.keys()))
-
 # Declaramos el cliente de Groq
 client = Groq(
     api_key=st.secrets["ngroqAPIKey"],  # Cargamos la API key del .streamlit/secrets.toml
