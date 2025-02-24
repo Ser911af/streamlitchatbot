@@ -1,69 +1,81 @@
-import streamlit as st
-import time
+import os
+from dotenv import load_dotenv
 from groq import Groq
-from typing import Generator
+import streamlit as st
+from streamlit_chat import message  
 
-st.title("Groq Bot")
 
-# Declaramos el cliente de Groq
-client = Groq(
-    api_key=st.secrets["ngroqAPIKey"],  # Cargamos la API key del .streamlit/secrets.toml
-)
+# Cargar variables de entorno
+load_dotenv()
 
-# Lista de modelos para elegir
-modelos = ['llama3-8b-8192', 'llama3-70b-8192', 'mixtral-8x7b-32768']
+# Obtener la API Key
+api_key = os.getenv("GROQ_API_KEY")
 
-def generate_chat_responses(chat_completion) -> Generator[str, None, None]:
-    """ Generated Chat Responses
-        Genera respuestas de chat a partir de la información de completado de chat, mostrando caracter por caracter.
+if not api_key:
+    raise ValueError("La API Key de Groq no está configurada.")
 
-        Args: chat_completion (str): La información de completado de chat.
+client = Groq(api_key=api_key)
 
-        Yields: str: Cada respuesta generada.
-    """
-    for chunk in chat_completion:
-        if chunk.choices[0].delta.content:
-            yield chunk.choices[0].delta.content
-
-# Inicializamos el historial de chat
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# Muestra mensajes de chat desde la historia en la aplicación cada vez que la aplicación se ejecuta
-with st.container():
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-# Mostramos la lista de modelos en el sidebar
-parModelo = st.sidebar.selectbox('Modelos', options=modelos, index=0)
-# Mostramos el campo para el prompt del usuario
-prompt = st.chat_input("Qué quieres saber?")
-
-if prompt:
-    # Mostrar mensaje de usuario en el contenedor de mensajes de chat
-    st.chat_message("user").markdown(prompt)
-    # Agregar mensaje de usuario al historial de chat
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# Función para cargar el prompt desde un archivo
+def cargar_prompt(ruta_archivo="app/prompt.txt"):
     try:
-        chat_completion = client.chat.completions.create(
-            model=parModelo,
-            messages=[
-                {
-                    "role": m["role"],
-                    "content": m["content"]
-                }
-                for m in st.session_state.messages
-            ],  # Entregamos el historial de los mensajes para que el modelo tenga algo de memoria
-            stream=True
-        )
-        # Mostrar respuesta del asistente en el contenedor de mensajes de chat
-        with st.chat_message("assistant"):
-            chat_responses_generator = generate_chat_responses(chat_completion)
-            # Usamos st.write_stream para simular escritura
-            full_response = st.write_stream(chat_responses_generator)
-        # Agregar respuesta de asistente al historial de chat
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
-    except Exception as e:  # Informamos si hay un error
-        st.error(e)
+        with open(ruta_archivo, "r", encoding="utf-8") as file:
+            return file.read()
+    except FileNotFoundError:
+        st.error("⚠️ Error: No se encontró el archivo de prompt.")
+        return ""
 
+# Cargar el prompt base
+PROMPT_BASE = cargar_prompt()
+
+# Inicializar historial en session_state si no existe
+if "historial" not in st.session_state:
+    st.session_state.historial = [
+        {"role": "system", "content": PROMPT_BASE}
+    ]
+
+# --- Interfaz de Streamlit ---
+st.title("Asistente Virtual - Hotel Costa Chocó")
+st.write("Haz tus preguntas sobre tarifas, servicios y más del hotel.")
+
+# Mostrar historial de conversación con streamlit-chat
+for i, mensaje in enumerate(st.session_state.historial):
+    if mensaje["role"] == "user":
+        message(mensaje["content"], is_user=True, key=f"user_{i}")
+    elif mensaje["role"] == "assistant":
+        message(mensaje["content"], is_user=False, key=f"assistant_{i}")
+
+# Entrada del usuario con `st.chat_input`
+pregunta = st.chat_input("Escribe tu pregunta y presiona Enter...")
+
+if pregunta:
+    # Agregar pregunta al historial
+    st.session_state.historial.append({"role": "user", "content": pregunta})
+
+    st.write("Procesando...")
+
+    try:
+        # Llamar a Groq con todo el historial
+        chat_completion = client.chat.completions.create(
+            messages=st.session_state.historial,
+            model="llama-3.3-70b-versatile",
+        )
+
+        # Obtener la respuesta
+        respuesta = chat_completion.choices[0].message.content
+
+        # Agregar respuesta al historial
+        st.session_state.historial.append({"role": "assistant", "content": respuesta})
+
+        # Actualizar la página para mostrar la nueva conversación
+        st.rerun()
+
+    except Exception as e:
+        st.error(f"Error al obtener la respuesta: {e}")
+
+# Botón para limpiar historial
+if st.button("Borrar Historial"):
+    st.session_state.historial = [
+        {"role": "system", "content": PROMPT_BASE}
+    ]
+    st.rerun()
