@@ -17,7 +17,7 @@ if not api_key:
 client = Groq(api_key=api_key)
 
 # Función para cargar el prompt desde un archivo
-def cargar_prompt(ruta_archivo="https://raw.githubusercontent.com/Ser911af/streamlitchatbot/refs/heads/main/prompt.txt"):
+def cargar_prompt(ruta_archivo="prompt.txt"):
     try:
         with open(ruta_archivo, "r", encoding="utf-8") as file:
             return file.read()
